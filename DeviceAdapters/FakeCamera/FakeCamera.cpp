@@ -397,6 +397,10 @@ int FakeCamera::OnFrameCount(MM::PropertyBase * pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
+
+/* parse and replace 
+goes throu the string and calls parsePlaceholde when it hits a '?'
+*/
 std::string FakeCamera::parseUntil(const char*& it, const char delim) const throw (parse_error)
 {
 	std::ostringstream ret;
@@ -415,6 +419,9 @@ std::string FakeCamera::parseUntil(const char*& it, const char delim) const thro
 	return ret.str();
 }
 
+/* parse and replace 
+reads the next char after an inital '?'
+*/
 std::string FakeCamera::parsePlaceholder(const char*& it) const
 {
 	const char* start = it;
@@ -422,9 +429,10 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 
 	try
 	{
-		std::pair<int, int> precSpec(0, 0);
+		std::pair<int, int> precSpec(1, 0);
 		std::string metadata("");
 		std::string name("");
+
 
 		for (; *it != 0; ++it)
 		{
@@ -441,6 +449,10 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 				break;
 			case '?':
 				name = "?";
+				break;
+			case '!':
+				//increase amount of leading zeros
+				precSpec.first++;
 				break;
 			default:
 				throw parse_error();
