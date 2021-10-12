@@ -49,6 +49,12 @@ FakeCamera::FakeCamera() :
 
 	CreateProperty("FrameCount", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnFrameCount));
 
+	std::vector<std::string> allowedValues;
+	allowedValues.push_back("0");
+	allowedValues.push_back("1");
+	CreateProperty("Tiff Stack", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTiffStack));
+	SetAllowedValues("Tiff Stack", allowedValues);
+
 	CreateProperty(MM::g_Keyword_Name, cameraName, MM::String, true);
 
 	// Description
@@ -107,7 +113,7 @@ int FakeCamera::Shutdown()
 	return DEVICE_OK;
 }
 
-void FakeCamera::GetName(char * name) const
+void FakeCamera::GetName(char* name) const
 {
 	CDeviceUtils::CopyLimitedString(name, cameraName);
 }
@@ -165,7 +171,7 @@ int FakeCamera::SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize)
 	return DEVICE_OK;
 }
 
-int FakeCamera::GetROI(unsigned & x, unsigned & y, unsigned & xSize, unsigned & ySize)
+int FakeCamera::GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize)
 {
 	initSize();
 
@@ -186,14 +192,14 @@ int FakeCamera::ClearROI()
 	return DEVICE_OK;
 }
 
-int FakeCamera::IsExposureSequenceable(bool & isSequenceable) const
+int FakeCamera::IsExposureSequenceable(bool& isSequenceable) const
 {
 	isSequenceable = false;
 
 	return DEVICE_OK;
 }
 
-const unsigned char * FakeCamera::GetImageBuffer()
+const unsigned char* FakeCamera::GetImageBuffer()
 {
 	return roi_.data;
 }
@@ -229,8 +235,8 @@ unsigned FakeCamera::GetImageBytesPerPixel() const
 
 int FakeCamera::SnapImage()
 {
-ERRH_START
-	MM::MMTime start = GetCoreCallback()->GetCurrentMMTime();
+	ERRH_START
+		MM::MMTime start = GetCoreCallback()->GetCurrentMMTime();
 	++frameCount_;
 	initSize();
 
@@ -242,7 +248,7 @@ ERRH_START
 
 	if (rem > 0)
 		CDeviceUtils::SleepMs((long)rem);
-ERRH_END
+	ERRH_END
 }
 
 int FakeCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow)
@@ -263,7 +269,7 @@ void FakeCamera::OnThreadExiting() throw()
 	CCameraBase::OnThreadExiting();
 }
 
-int FakeCamera::OnPath(MM::PropertyBase * pProp, MM::ActionType eAct)
+int FakeCamera::OnPath(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
@@ -295,7 +301,7 @@ int FakeCamera::OnPath(MM::PropertyBase * pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
-int FakeCamera::ResolvePath(MM::PropertyBase * pProp, MM::ActionType eAct)
+int FakeCamera::ResolvePath(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
@@ -317,7 +323,7 @@ double scaleFac(int bef, int aft)
 	return (double)(1 << (8 * aft)) / (1 << (8 * bef));
 }
 
-int FakeCamera::OnPixelType(MM::PropertyBase * pProp, MM::ActionType eAct)
+int FakeCamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
@@ -380,7 +386,7 @@ int FakeCamera::OnPixelType(MM::PropertyBase * pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
-int FakeCamera::OnFrameCount(MM::PropertyBase * pProp, MM::ActionType eAct)
+int FakeCamera::OnFrameCount(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
@@ -397,8 +403,25 @@ int FakeCamera::OnFrameCount(MM::PropertyBase * pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
+int FakeCamera::OnTiffStack(MM::PropertyBase* pProp, MM::ActionType eAct) {
 
-/* parse and replace 
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(useTiffStack_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		useTiffStack_ = atoi(val.c_str()) == 1;
+	}
+
+	return DEVICE_OK;
+}
+
+
+/* parse and replace
 goes throu the string and calls parsePlaceholde when it hits a '?'
 */
 std::string FakeCamera::parseUntil(const char*& it, const char delim) const throw (parse_error)
@@ -419,7 +442,7 @@ std::string FakeCamera::parseUntil(const char*& it, const char delim) const thro
 	return ret.str();
 }
 
-/* parse and replace 
+/* parse and replace
 reads the next char after an inital '?'
 */
 std::string FakeCamera::parsePlaceholder(const char*& it) const
@@ -476,7 +499,7 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 			printNum(res, precSpec, val);
 			return res.str();
 		}
-		
+
 		if (name == "$frame")
 		{
 			int val = frameCount_;
@@ -572,7 +595,7 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 		break;
 		case MM::SignalIODevice:
 		{
-			MM::SignalIO* signalIO = (MM::SignalIO*) dev;
+			MM::SignalIO* signalIO = (MM::SignalIO*)dev;
 
 			if (metadata.size() > 0)
 			{
@@ -617,11 +640,11 @@ std::pair<int, int> FakeCamera::parsePrecision(const char*& it) const throw (par
 
 	if (dotPos > 0)
 		return std::pair<int, int>(atoi(pSpec.substr(0, dotPos).c_str()), atoi(pSpec.substr(dotPos + 1).c_str()));
-	
+
 	return std::pair<int, int>(0, atoi(pSpec.c_str()));
 }
 
-std::ostream & FakeCamera::printNum(std::ostream & o, std::pair<int, int> precSpec, double num)
+std::ostream& FakeCamera::printNum(std::ostream& o, std::pair<int, int> precSpec, double num)
 {
 	int intLen = precSpec.first;
 	int prec = precSpec.second;
@@ -662,27 +685,45 @@ std::string FakeCamera::parseMask(std::string mask) const throw(error_code)
 
 void FakeCamera::getImg() const
 {
+	cv::Mat img;
 	std::string path = parseMask(path_);
 
-	if (path == curPath_)
-		return;
-
-	cv::Mat img = path == lastFailedPath_ ? lastFailedImg_ : cv::imread(path, cv::IMREAD_ANYDEPTH | (color_ ? cv::IMREAD_COLOR : cv::IMREAD_GRAYSCALE));
-
-	if (img.data == NULL)
-	{
-		if (curImg_.data != NULL)
-		{
-			LogMessage("Could not find image '" + path + "', reusing last valid image");
-			curPath_ = path;
-			return;
+	if (useTiffStack_) {
+		if (tiffStack_.empty()) {
+			if (!cv::imreadmulti(path, tiffStack_, cv::IMREAD_ANYDEPTH | (color_ ? cv::IMREAD_COLOR : cv::IMREAD_GRAYSCALE))) {
+				throw error_code(CONTROLLER_ERROR, "Could not find image '" + path + "'. Please specify a vaild path to a tiff stack.");
+			}
 		}
-		else
+
+		double focusDepth;
+		if (GetCoreCallback()->GetFocusPosition(focusDepth) != 0)
+			focusDepth = 0;
+
+		int index = std::max(std::min((int)focusDepth,(int)tiffStack_.size()-1),0);
+		img = tiffStack_[index];
+	}
+	else {
+
+		if (path == curPath_)
+			return;
+
+		img = path == lastFailedPath_ ? lastFailedImg_ : cv::imread(path, cv::IMREAD_ANYDEPTH | (color_ ? cv::IMREAD_COLOR : cv::IMREAD_GRAYSCALE));
+
+		if (img.data == NULL)
 		{
-			throw error_code(CONTROLLER_ERROR, "Could not find image '" + path + "'. Please specify a valid path mask (format: ?? for focus stage, ?[name] for any stage, and ?{prec}[name]/?{prec}? for precision other than 0)");
+			if (curImg_.data != NULL)
+			{
+				LogMessage("Could not find image '" + path + "', reusing last valid image");
+				curPath_ = path;
+				return;
+			}
+			else
+			{
+				throw error_code(CONTROLLER_ERROR, "Could not find image '" + path + "'. Please specify a valid path mask (format: ?? for focus stage, ?[name] for any stage, and ?{prec}[name]/?{prec}? for precision other than 0)");
+			}
 		}
 	}
-
+	
 	img.convertTo(img, type_, scaleFac((int)img.elemSize() / img.channels(), byteCount_));
 
 	bool dimChanged = (unsigned)img.cols != width_ || (unsigned)img.rows != height_;
