@@ -40,7 +40,10 @@ FakeCamera::FakeCamera() :
 	byteCount_(1),
 	type_(CV_8UC1),
 	emptyImg(1, 1, type_),
-	exposure_(10)
+	exposure_(10),
+	useTiffStack_(false),
+	timePoints_(0),
+	updateRateMil_(0)
 {
 	resetCurImg();
 
@@ -54,6 +57,10 @@ FakeCamera::FakeCamera() :
 	allowedValues.push_back("1");
 	CreateProperty("Tiff Stack", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTiffStack));
 	SetAllowedValues("Tiff Stack", allowedValues);
+
+	CreateProperty("Time Points", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTimePoints));
+	CreateProperty("Update Rate Milliseconds", "1000", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateRateMil));
+
 
 	CreateProperty(MM::g_Keyword_Name, cameraName, MM::String, true);
 
@@ -407,7 +414,7 @@ int FakeCamera::OnTiffStack(MM::PropertyBase* pProp, MM::ActionType eAct) {
 
 	if (eAct == MM::BeforeGet)
 	{
-		pProp->Set(CDeviceUtils::ConvertToString(useTiffStack_));
+		pProp->Set(CDeviceUtils::ConvertToString((int)useTiffStack_));
 	}
 	else if (eAct == MM::AfterSet)
 	{
@@ -419,6 +426,41 @@ int FakeCamera::OnTiffStack(MM::PropertyBase* pProp, MM::ActionType eAct) {
 
 	return DEVICE_OK;
 }
+
+int FakeCamera::OnTimePoints(MM::PropertyBase* pProp, MM::ActionType eAct) {
+
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(timePoints_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		timePoints_ = atoi(val.c_str());
+	}
+
+	return DEVICE_OK;
+}
+
+int FakeCamera::OnUpdateRateMil(MM::PropertyBase* pProp, MM::ActionType eAct) {
+
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(updateRateMil_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		updateRateMil_ = atoi(val.c_str());
+	}
+
+	return DEVICE_OK;
+}
+
 
 
 /* parse and replace
@@ -493,8 +535,14 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 		if (name == "?")
 		{
 			double val;
-			if (GetCoreCallback()->GetFocusPosition(val) != 0)
-				val = 0;
+			if (timePoints_ == 0) {
+				if (GetCoreCallback()->GetFocusPosition(val) != 0)
+					val = 0;
+			}
+			else {
+				std::time_t now = std::time(0);
+				val = now % timePoints_;
+			}
 
 			printNum(res, precSpec, val);
 			return res.str();
@@ -689,18 +737,41 @@ void FakeCamera::getImg() const
 	std::string path = parseMask(path_);
 
 	if (useTiffStack_) {
-		if (tiffStack_.empty()) {
-			if (!cv::imreadmulti(path, tiffStack_, cv::IMREAD_ANYDEPTH | (color_ ? cv::IMREAD_COLOR : cv::IMREAD_GRAYSCALE))) {
-				throw error_code(CONTROLLER_ERROR, "Could not find image '" + path + "'. Please specify a vaild path to a tiff stack.");
+		std::vector<cv::Mat> currentStack;
+
+		if (timePoints_ == 0) {
+			if (tiffStacks_.empty()) {
+				std::vector<cv::Mat> stack;
+				if (!cv::imreadmulti(path, stack, cv::IMREAD_ANYDEPTH | (color_ ? cv::IMREAD_COLOR : cv::IMREAD_GRAYSCALE))) {
+					throw error_code(CONTROLLER_ERROR, "Could not find image '" + path + "'. Please specify a vaild path to a tiff stack.");
+				}
+				tiffStacks_["noTime"] = stack;
 			}
+			currentStack = tiffStacks_["noTime"];
 		}
+		else {
+			auto search = tiffStacks_.find(path);
+			if (search != tiffStacks_.end()) {
+				currentStack = search->second;
+			}
+			else {
+				std::vector<cv::Mat> stack;
+				if (!cv::imreadmulti(path, stack, cv::IMREAD_ANYDEPTH | (color_ ? cv::IMREAD_COLOR : cv::IMREAD_GRAYSCALE))) {
+					throw error_code(CONTROLLER_ERROR, "Could not find image '" + path + "'. Please specify a vaild path to a tiff stack.");
+				}
+				tiffStacks_[path] = stack;
+				currentStack = stack;
+			}
+			
+		}
+
 
 		double focusDepth;
 		if (GetCoreCallback()->GetFocusPosition(focusDepth) != 0)
 			focusDepth = 0;
 
-		int index = std::max(std::min((int)focusDepth,(int)tiffStack_.size()-1),0);
-		img = tiffStack_[index];
+		int index = std::max(std::min((int)focusDepth,(int)currentStack.size()-1),0);
+		img = currentStack[index];
 	}
 	else {
 
@@ -808,6 +879,8 @@ void FakeCamera::resetCurImg()
 	roiWidth_ = width_ = 1;
 	roiHeight_ = height_ = 1;
 	frameCount_ = 0;
+
+	tiffStacks_.clear();
 
 	ClearROI();
 	updateROI();
