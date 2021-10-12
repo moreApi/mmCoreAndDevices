@@ -82,6 +82,7 @@ public:
 	int ResolvePath(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFrameCount(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnTiffStack(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 	std::string parseUntil(const char*& it, const char delim) const throw (parse_error);
 	std::string parsePlaceholder(const char*& it) const;
@@ -99,6 +100,7 @@ private:
 
 	std::string path_;
 	int frameCount_;
+	bool useTiffStack_;
 
 	bool capturing_;
 	mutable bool initSize_;
@@ -119,6 +121,7 @@ private:
 	mutable cv::Mat alphaChannel_;
 	mutable cv::Mat lastFailedImg_;
 	mutable cv::Mat roi_;
+	mutable std::vector<cv::Mat> tiffStack_;
 	mutable std::string curPath_;
 	mutable std::string lastFailedPath_;
 
