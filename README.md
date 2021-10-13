@@ -1,3 +1,18 @@
+# Fake Cam extensions
+
+## Leading Zero
+
+Adding n\*`!` between the `??` of the focus depth of the pask mask, adds n\*leading zeros to the resolved path if needed. Eg. `dir/img?!!?.png` resolves to `dir/img001.png` or `dir/img345.png`.
+
+## Tiff stack support
+
+To load a Tiff stack set `use Tiff Stack` to 1 in the Device Property Browser. The path can simply point to the file and the images in the stack are used for the focus levels.
+
+## Time support
+
+Setting `Time points` to non-zero and the amount of time points in the data activates the time support. The focus depth in the path is replaced with the time component in seconds. (If Tiff stacks are not used this means, that every time point has just one focus level.)
+
+
 # mmCoreAndDevices
 The c++ code at the core of the Micro-Manager project.
 
