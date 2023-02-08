@@ -85,6 +85,8 @@ public:
 	int OnTiffStack(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnTimePoints(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnUpdateRateMil(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnUpdateCamWidth(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnUpdateCamHeight(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 	std::string parseUntil(const char*& it, const char delim) const throw (parse_error);
 	std::string parsePlaceholder(const char*& it) const;
@@ -105,6 +107,11 @@ private:
 	bool useTiffStack_;
 	int timePoints_;
 	int updateRateMil_;
+
+	int cameraWidth_;
+	int cameraHeight_;
+	int posX_;
+	int posY_;
 
 	bool capturing_;
 	mutable bool initSize_;
