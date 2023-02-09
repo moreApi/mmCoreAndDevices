@@ -884,31 +884,25 @@ void FakeCamera::getImg() const
 	double posXLeft = posX < 0.0 ? 1.0 : 0.0;
 	double posYUp = posY < 0.0 ? 1.0 : 0.0;
 
-	posX = posX < -cameraWidth_ ? -cameraWidth_ : posX;
-	posX = posX > img.cols ? img.cols : posX;
-	posY = posY < -cameraHeight_ ? -cameraHeight_ : posY;
-	posY = posY > img.rows ? img.rows : posY;
-	GetCoreCallback()->SetXYPosition(posX, posY);
+	double viewFromWholeWidth = std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1) - std::max(0.0, std::min(posX, (double)img.cols - 1)));
+	double viewFromWholeHeight = std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1) - std::max(0.0, std::min(posY, (double)img.rows - 1)));
 
-	double viewFromWholeWidth = std::max(1.0, std::min(posX + cameraWidth_, (double)img.cols) - std::max(0.0, std::min(posX, (double)img.cols - 1)));
-	double viewFromWholeHeight = std::max(1.0, std::min(posY + cameraHeight_, (double)img.rows) - std::max(0.0, std::min(posY, (double)img.rows - 1)));
+	cv::Mat cameraViewFromWhole = curImg_(cv::Range(std::max(0.0, std::min(posY, (double)img.rows - 1)), std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1)))
+										, cv::Range(std::max(0.0, std::min(posX, (double)img.cols - 1)), std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1))) );
 
-
-	cv::Mat cameraViewFromWhole = curImg_(cv::Range(std::max(0.0, std::min(posY, (double)img.rows - 1)), std::max(1.0, std::min(posY + cameraHeight_, (double)img.rows)))
-										, cv::Range(std::max(0.0, std::min(posX, (double)img.cols - 1)), std::max(1.0, std::min(posX + cameraWidth_, (double)img.cols))) );
-
-	cv::Rect copyDest(cv::Point( (int)(cameraWidth_ - (posXLeft * (viewFromWholeWidth))) % (cameraWidth_), (int)(cameraHeight_ - (posYUp * (viewFromWholeHeight))) % (cameraHeight_) ), cameraViewFromWhole.size());
-
-	cameraViewFromWhole.copyTo(imageView(copyDest));
-
+	if (cameraViewFromWhole.size().width > 0.0 && cameraViewFromWhole.size().height > 0.0)
+	{
+		cv::Rect copyDest(cv::Point( (int)(cameraWidth_ - (posXLeft * (viewFromWholeWidth))) % (cameraWidth_), (int)(cameraHeight_ - (posYUp * (viewFromWholeHeight))) % (cameraHeight_) ), cameraViewFromWhole.size());
+		cameraViewFromWhole.copyTo(imageView(copyDest));
+	}
 
 	roi_ = imageView;
-	/*roiX_ = std::max(0.0, std::min(posX + (img.cols / 2), (double)img.cols)-cameraWidth_);
+	roiX_ = std::max(0.0, std::min(posX + (img.cols / 2), (double)img.cols)-cameraWidth_);
 	roiY_ = std::max(0.0, std::min(posY + (img.rows / 2), (double)img.rows)-cameraHeight_);
 
 
 	roiHeight_ = std::max(1, std::min(cameraHeight_, img.rows));
-	roiWidth_ = std::max(1, std::min(cameraWidth_, img.cols));*/
+	roiWidth_ = std::max(1, std::min(cameraWidth_, img.cols));
 	updateROI();
 }
 
