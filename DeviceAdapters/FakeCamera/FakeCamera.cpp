@@ -62,7 +62,7 @@ FakeCamera::FakeCamera() :
 	CreateProperty("Tiff Stack", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTiffStack));
 	SetAllowedValues("Tiff Stack", allowedValues);
 
-	//allowedValues.clear();
+	
 	CreateProperty("Time Points", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTimePoints));
 	CreateProperty("Update Rate Milliseconds", "1000", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateRateMil));
 
@@ -897,19 +897,11 @@ void FakeCamera::getImg() const
 	}
 
 	roi_ = imageView;
-	roiX_ = std::max(0.0, std::min(posX + (img.cols / 2), (double)img.cols)-cameraWidth_);
-	roiY_ = std::max(0.0, std::min(posY + (img.rows / 2), (double)img.rows)-cameraHeight_);
-
-
-	roiHeight_ = std::max(1, std::min(cameraHeight_, img.rows));
-	roiWidth_ = std::max(1, std::min(cameraWidth_, img.cols));
 	updateROI();
 }
 
 void FakeCamera::updateROI() const
 {
-	//roi_ = curImg_(cv::Range(roiY_, roiY_ + roiHeight_), cv::Range(roiX_, roiX_ + roiWidth_));
-
 	if (!roi_.isContinuous())
 		roi_ = roi_.clone();
 }
