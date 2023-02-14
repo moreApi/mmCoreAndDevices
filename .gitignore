@@ -73,3 +73,6 @@ test-reports/
 *.pb.cc
 *.pb.h
 bin
+
+JSON
+
