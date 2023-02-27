@@ -37,6 +37,10 @@ FakeCamera::FakeCamera() :
 	color_(false),
 	roiX_(0),
 	roiY_(0),
+	cameraWidth_(64),
+	cameraHeight_(64),
+	posX_(0),
+	posY_(0),
 	byteCount_(1),
 	type_(CV_8UC1),
 	emptyImg(1, 1, type_),
@@ -58,8 +62,12 @@ FakeCamera::FakeCamera() :
 	CreateProperty("Tiff Stack", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTiffStack));
 	SetAllowedValues("Tiff Stack", allowedValues);
 
+	
 	CreateProperty("Time Points", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTimePoints));
 	CreateProperty("Update Rate Milliseconds", "1000", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateRateMil));
+
+	CreateProperty("Camera Width", "64", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamWidth));
+	CreateProperty("Camera Height", "64", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamHeight));
 
 
 	CreateProperty(MM::g_Keyword_Name, cameraName, MM::String, true);
@@ -194,7 +202,7 @@ int FakeCamera::ClearROI()
 {
 	initSize();
 
-	SetROI(0, 0, width_, height_);
+	SetROI(posX_, posY_, width_, height_);
 
 	return DEVICE_OK;
 }
@@ -461,7 +469,39 @@ int FakeCamera::OnUpdateRateMil(MM::PropertyBase* pProp, MM::ActionType eAct) {
 	return DEVICE_OK;
 }
 
+int FakeCamera::OnUpdateCamWidth(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(cameraWidth_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		cameraWidth_ = atoi(val.c_str());
+	}
 
+	return DEVICE_OK;
+}
+
+int FakeCamera::OnUpdateCamHeight(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(cameraHeight_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		cameraHeight_ = atoi(val.c_str());
+	}
+
+	return DEVICE_OK;
+}
 
 /* parse and replace
 goes throu the string and calls parsePlaceholde when it hits a '?'
@@ -794,7 +834,7 @@ void FakeCamera::getImg() const
 			}
 		}
 	}
-	
+
 	img.convertTo(img, type_, scaleFac((int)img.elemSize() / img.channels(), byteCount_));
 
 	bool dimChanged = (unsigned)img.cols != width_ || (unsigned)img.rows != height_;
@@ -835,14 +875,33 @@ void FakeCamera::getImg() const
 		initSize_ = false;
 		initSize(false);
 	}
+	
+	//should create an zero initialized image of size camera
+	cv::Mat imageView = cv::Mat::zeros(cameraHeight_, cameraWidth_, type_);
 
+	double posX, posY;
+	GetCoreCallback()->GetXYPosition(posX, posY);
+	double posXLeft = posX < 0.0 ? 1.0 : 0.0;
+	double posYUp = posY < 0.0 ? 1.0 : 0.0;
+
+	double viewFromWholeWidth = std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1) - std::max(0.0, std::min(posX, (double)img.cols - 1)));
+	double viewFromWholeHeight = std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1) - std::max(0.0, std::min(posY, (double)img.rows - 1)));
+
+	cv::Mat cameraViewFromWhole = curImg_(cv::Range(std::max(0.0, std::min(posY, (double)img.rows - 1)), std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1)))
+										, cv::Range(std::max(0.0, std::min(posX, (double)img.cols - 1)), std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1))) );
+
+	if (cameraViewFromWhole.size().width > 0.0 && cameraViewFromWhole.size().height > 0.0)
+	{
+		cv::Rect copyDest(cv::Point( (int)(cameraWidth_ - (posXLeft * (viewFromWholeWidth))) % (cameraWidth_), (int)(cameraHeight_ - (posYUp * (viewFromWholeHeight))) % (cameraHeight_) ), cameraViewFromWhole.size());
+		cameraViewFromWhole.copyTo(imageView(copyDest));
+	}
+
+	roi_ = imageView;
 	updateROI();
 }
 
 void FakeCamera::updateROI() const
 {
-	roi_ = curImg_(cv::Range(roiY_, roiY_ + roiHeight_), cv::Range(roiX_, roiX_ + roiWidth_));
-
 	if (!roi_.isContinuous())
 		roi_ = roi_.clone();
 }
