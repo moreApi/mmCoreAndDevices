@@ -37,8 +37,8 @@ FakeCamera::FakeCamera() :
 	color_(false),
 	roiX_(0),
 	roiY_(0),
-	cameraWidth_(64),
-	cameraHeight_(64),
+	cameraWidth_(400),
+	cameraHeight_(400),
 	posX_(0),
 	posY_(0),
 	byteCount_(1),
@@ -66,8 +66,8 @@ FakeCamera::FakeCamera() :
 	CreateProperty("Time Points", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTimePoints));
 	CreateProperty("Update Rate Milliseconds", "1000", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateRateMil));
 
-	CreateProperty("Camera Width", "64", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamWidth));
-	CreateProperty("Camera Height", "64", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamHeight));
+	CreateProperty("Camera Width", "400", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamWidth));
+	CreateProperty("Camera Height", "400", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamHeight));
 
 
 	CreateProperty(MM::g_Keyword_Name, cameraName, MM::String, true);
@@ -775,6 +775,9 @@ void FakeCamera::getImg() const
 {
 	cv::Mat img;
 	std::string path = parseMask(path_);
+	
+	if (path == curPath_)
+		return;
 
 	if (useTiffStack_) {
 		std::vector<cv::Mat> currentStack;
@@ -802,7 +805,7 @@ void FakeCamera::getImg() const
 				tiffStacks_[path] = stack;
 				currentStack = stack;
 			}
-			
+
 		}
 
 
@@ -836,7 +839,7 @@ void FakeCamera::getImg() const
 	}
 
 	img.convertTo(img, type_, scaleFac((int)img.elemSize() / img.channels(), byteCount_));
-
+	
 	bool dimChanged = (unsigned)img.cols != width_ || (unsigned)img.rows != height_;
 
 	if (dimChanged)
@@ -876,6 +879,12 @@ void FakeCamera::getImg() const
 		initSize(false);
 	}
 	
+	// curImg_:				Complete image at current depth (inside tiffStack)
+	// cameraViewFromWhole: Part of curImg_, the camera is strifing over using the stage control -> maxRange cameraWidth*cameraHeight, at borders its smaller (only the part of curImg_ that is inside the range counts)
+	// imageView:			The final image the user can see -> cameraViewFromWhole, but with noise/border at the border of the actual tiffImage (curImg_)
+	// posX & posY:			current stage position
+	// posXLeft & Up:		is the camera position to the left and/or up relative to curImg_ (for negative coordiantes) -> flag is used to properly fill the camView into imageView at the correct offset
+
 	//should create an zero initialized image of size camera
 	cv::Mat imageView = cv::Mat::zeros(cameraHeight_, cameraWidth_, type_);
 
@@ -887,16 +896,43 @@ void FakeCamera::getImg() const
 	double viewFromWholeWidth = std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1) - std::max(0.0, std::min(posX, (double)img.cols - 1)));
 	double viewFromWholeHeight = std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1) - std::max(0.0, std::min(posY, (double)img.rows - 1)));
 
-	cv::Mat cameraViewFromWhole = curImg_(cv::Range(std::max(0.0, std::min(posY, (double)img.rows - 1)), std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1)))
-										, cv::Range(std::max(0.0, std::min(posX, (double)img.cols - 1)), std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1))) );
+	cv::Mat cameraViewFromWhole = curImg_
+	(
+		cv::Range(std::max(0.0, std::min(posY, (double)img.rows - 1)), std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1))),
+		cv::Range(std::max(0.0, std::min(posX, (double)img.cols - 1)), std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1)))
+	);
+
+	//int xOffset = (int)(cameraWidth_ - (posXLeft * (cameraViewFromWhole.cols -1))) % (cameraWidth_);
+	//int yOffset = (int)(cameraHeight_ - (posYUp * (cameraViewFromWhole.rows -1))) % (cameraHeight_);
+	//if (cameraViewFromWhole.cols > 0 && cameraViewFromWhole.rows > 0)
+	//{		
+	//	cameraViewFromWhole.copyTo(imageView(cv::Rect(
+	//		xOffset,
+	//		yOffset,
+	//		xOffset + cameraViewFromWhole.cols,
+	//		yOffset + cameraViewFromWhole.rows
+	//	)));		
+	//}/*
+	//cameraViewFromWhole.copyTo(imageView(cv::Rect(
+	//	xOffset,
+	//	yOffset,
+	//	xOffset + cameraViewFromWhole.cols,
+	//	yOffset + cameraViewFromWhole.rows
+	//)));*/
 
 	if (cameraViewFromWhole.size().width > 0.0 && cameraViewFromWhole.size().height > 0.0)
 	{
-		cv::Rect copyDest(cv::Point( (int)(cameraWidth_ - (posXLeft * (viewFromWholeWidth))) % (cameraWidth_), (int)(cameraHeight_ - (posYUp * (viewFromWholeHeight))) % (cameraHeight_) ), cameraViewFromWhole.size());
+		cv::Rect copyDest(cv::Point((int)(cameraWidth_ - (posXLeft * (viewFromWholeWidth))) % (cameraWidth_), (int)(cameraHeight_ - (posYUp * (viewFromWholeHeight))) % (cameraHeight_)), cameraViewFromWhole.size());
 		cameraViewFromWhole.copyTo(imageView(copyDest));
 	}
 
 	roi_ = imageView;
+	roiX_ = std::max(0.0, std::min(posX + (img.cols / 2), (double)img.cols) - cameraWidth_);
+	roiY_ = std::max(0.0, std::min(posY + (img.rows / 2), (double)img.rows) - cameraHeight_);
+
+
+	roiHeight_ = std::max(1, std::min(cameraHeight_, img.rows));
+	roiWidth_ = std::max(1, std::min(cameraWidth_, img.cols));
 	updateROI();
 }
 
@@ -918,8 +954,8 @@ void FakeCamera::initSize(bool loadImg) const
 		if (loadImg)
 			getImg();
 
-		roiWidth_ = width_ = curImg_.cols;
-		roiHeight_ = height_ = curImg_.rows;
+		roiWidth_ = width_ = cameraWidth_;
+		roiHeight_ = height_ = cameraHeight_;
 	}
 	catch (error_code)
 	{
