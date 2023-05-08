@@ -39,6 +39,8 @@ FakeCamera::FakeCamera() :
 	roiY_(0),
 	cameraWidth_(64),
 	cameraHeight_(64),
+	noiseMin_(0),
+	noiseMax_(256),
 	posX_(0),
 	posY_(0),
 	byteCount_(1),
@@ -62,12 +64,17 @@ FakeCamera::FakeCamera() :
 	CreateProperty("Tiff Stack", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTiffStack));
 	SetAllowedValues("Tiff Stack", allowedValues);
 
-	
+	//allowedValues.clear();
 	CreateProperty("Time Points", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnTimePoints));
 	CreateProperty("Update Rate Milliseconds", "1000", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateRateMil));
 
 	CreateProperty("Camera Width", "64", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamWidth));
 	CreateProperty("Camera Height", "64", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateCamHeight));
+
+	CreateProperty("Noise Min", "0", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateNoiseMin));
+	CreateProperty("Noise Max", "256", MM::Integer, false, new CPropertyAction(this, &FakeCamera::OnUpdateNoiseMax));
+	SetPropertyLimits("Noise Min", 0, 256);
+	SetPropertyLimits("Noise Max", 0, 256);
 
 
 	CreateProperty(MM::g_Keyword_Name, cameraName, MM::String, true);
@@ -344,18 +351,18 @@ int FakeCamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
 	{
 		switch (type_)
 		{
-		case CV_8UC1:
-			pProp->Set(label_CV_8U);
-			break;
-		case CV_16UC1:
-			pProp->Set(label_CV_16U);
-			break;
-		case CV_8UC4:
-			pProp->Set(label_CV_8UC4);
-			break;
-		case CV_16UC4:
-			pProp->Set(label_CV_16UC4);
-			break;
+			case CV_8UC1:
+				pProp->Set(label_CV_8U);
+				break;
+			case CV_16UC1:
+				pProp->Set(label_CV_16U);
+				break;
+			case CV_8UC4:
+				pProp->Set(label_CV_8UC4);
+				break;
+			case CV_16UC4:
+				pProp->Set(label_CV_16UC4);
+				break;
 
 		}
 	}
@@ -503,6 +510,40 @@ int FakeCamera::OnUpdateCamHeight(MM::PropertyBase* pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
+int FakeCamera::OnUpdateNoiseMin(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(noiseMin_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		noiseMin_ = atoi(val.c_str());
+	}
+
+	return DEVICE_OK;
+}
+
+int FakeCamera::OnUpdateNoiseMax(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(CDeviceUtils::ConvertToString(noiseMax_));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string val;
+		pProp->Get(val);
+		resetCurImg();
+		noiseMax_ = atoi(val.c_str());
+	}
+
+	return DEVICE_OK;
+}
+
 /* parse and replace
 goes throu the string and calls parsePlaceholde when it hits a '?'
 */
@@ -543,24 +584,24 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 		{
 			switch (*it)
 			{
-			case '{':
-				precSpec = parsePrecision(++it);
-				break;
-			case '(':
-				metadata = parseUntil(++it, ')');
-				break;
-			case '[':
-				name = parseUntil(++it, ']');
-				break;
-			case '?':
-				name = "?";
-				break;
-			case '!':
-				//increase amount of leading zeros
-				precSpec.first++;
-				break;
-			default:
-				throw parse_error();
+				case '{':
+					precSpec = parsePrecision(++it);
+					break;
+				case '(':
+					metadata = parseUntil(++it, ')');
+					break;
+				case '[':
+					name = parseUntil(++it, ']');
+					break;
+				case '?':
+					name = "?";
+					break;
+				case '!':
+					//increase amount of leading zeros
+					precSpec.first++;
+					break;
+				default:
+					throw parse_error();
 			}
 
 			if (name.size() > 0)
@@ -612,103 +653,103 @@ std::string FakeCamera::parsePlaceholder(const char*& it) const
 
 		switch (dev->GetType())
 		{
-		case MM::ShutterDevice:
-		{
-			bool open;
-			if (((MM::Shutter*)dev)->GetOpen(open) != 0)
-				open = false;
-
-			if (metadata.size() == 0)
-				printNum(res, precSpec, open ? 1 : 0);
-			else
-				res << iif(open, metadata);
-		}
-		break;
-		case MM::StateDevice:
-		{
-			MM::State* state = (MM::State*)dev;
-
-			if (metadata == "$name")
-			{
-				char label[MM::MaxStrLength];
-				if (state->GetPosition(label) != 0)
-					label[0] = '\0';
-				res << label;
-			}
-			else if (metadata.size() > 0)
+			case MM::ShutterDevice:
 			{
 				bool open;
-				if (state->GetGateOpen(open) != 0)
+				if (((MM::Shutter*)dev)->GetOpen(open) != 0)
 					open = false;
 
-				res << iif(open, metadata);
+				if (metadata.size() == 0)
+					printNum(res, precSpec, open ? 1 : 0);
+				else
+					res << iif(open, metadata);
 			}
-			else
+			break;
+			case MM::StateDevice:
 			{
-				long pos;
-				if (state->GetPosition(pos))
+				MM::State* state = (MM::State*)dev;
+
+				if (metadata == "$name")
+				{
+					char label[MM::MaxStrLength];
+					if (state->GetPosition(label) != 0)
+						label[0] = '\0';
+					res << label;
+				}
+				else if (metadata.size() > 0)
+				{
+					bool open;
+					if (state->GetGateOpen(open) != 0)
+						open = false;
+
+					res << iif(open, metadata);
+				}
+				else
+				{
+					long pos;
+					if (state->GetPosition(pos))
+						pos = 0;
+
+					printNum(res, precSpec, pos);
+				}
+			}
+			break;
+			case MM::XYStageDevice:
+			case MM::GalvoDevice:
+			{
+				double x, y;
+
+				if (dev->GetType() == MM::XYStageDevice ? ((MM::XYStage*)dev)->GetPositionUm(x, y) : ((MM::Galvo*)dev)->GetPosition(x, y))
+					x = y = 0;
+
+				if (metadata == "$x")
+					printNum(res, precSpec, x);
+				else if (metadata == "$y")
+					printNum(res, precSpec, y);
+				else
+				{
+					std::string sep = metadata.size() > 0 ? metadata : "-";
+					printNum(printNum(res, precSpec, x) << sep, precSpec, y);
+				}
+			}
+			break;
+			case MM::StageDevice:
+			{
+				double pos;
+				if (((MM::Stage*)dev)->GetPositionUm(pos) != 0)
 					pos = 0;
 
 				printNum(res, precSpec, pos);
 			}
-		}
-		break;
-		case MM::XYStageDevice:
-		case MM::GalvoDevice:
-		{
-			double x, y;
-
-			if (dev->GetType() == MM::XYStageDevice ? ((MM::XYStage*)dev)->GetPositionUm(x, y) : ((MM::Galvo*)dev)->GetPosition(x, y))
-				x = y = 0;
-
-			if (metadata == "$x")
-				printNum(res, precSpec, x);
-			else if (metadata == "$y")
-				printNum(res, precSpec, y);
-			else
-			{
-				std::string sep = metadata.size() > 0 ? metadata : "-";
-				printNum(printNum(res, precSpec, x) << sep, precSpec, y);
-			}
-		}
-		break;
-		case MM::StageDevice:
-		{
-			double pos;
-			if (((MM::Stage*)dev)->GetPositionUm(pos) != 0)
-				pos = 0;
-
-			printNum(res, precSpec, pos);
-		}
-		break;
-		case MM::SignalIODevice:
-		{
-			MM::SignalIO* signalIO = (MM::SignalIO*)dev;
-
-			if (metadata.size() > 0)
-			{
-				bool open;
-				if (signalIO->GetGateOpen(open) != 0)
-					open = false;
-
-				res << iif(open, metadata);
-			}
-			else
-			{
-				double vol;
-				if (signalIO->GetSignal(vol) != 0)
-					vol = 0;
-
-				printNum(res, precSpec, vol);
-			}
-		}
-		break;
-		case MM::MagnifierDevice:
-			printNum(res, precSpec, ((MM::Magnifier*)dev)->GetMagnification());
 			break;
+			case MM::SignalIODevice:
+			{
+				MM::SignalIO* signalIO = (MM::SignalIO*)dev;
 
-		default:
-			throw parse_error();
+				if (metadata.size() > 0)
+				{
+					bool open;
+					if (signalIO->GetGateOpen(open) != 0)
+						open = false;
+
+					res << iif(open, metadata);
+				}
+				else
+				{
+					double vol;
+					if (signalIO->GetSignal(vol) != 0)
+						vol = 0;
+
+					printNum(res, precSpec, vol);
+				}
+			}
+			break;
+			case MM::MagnifierDevice:
+				printNum(res, precSpec, ((MM::Magnifier*)dev)->GetMagnification());
+				break;
+
+			default:
+				throw parse_error();
 		}
 
 		return res.str();
@@ -802,7 +843,7 @@ void FakeCamera::getImg() const
 				tiffStacks_[path] = stack;
 				currentStack = stack;
 			}
-			
+
 		}
 
 
@@ -810,7 +851,7 @@ void FakeCamera::getImg() const
 		if (GetCoreCallback()->GetFocusPosition(focusDepth) != 0)
 			focusDepth = 0;
 
-		int index = std::max(std::min((int)focusDepth,(int)currentStack.size()-1),0);
+		int index = std::max(std::min((int)focusDepth, (int)currentStack.size() - 1), 0);
 		img = currentStack[index];
 	}
 	else {
@@ -875,28 +916,48 @@ void FakeCamera::getImg() const
 		initSize_ = false;
 		initSize(false);
 	}
-	
+
+
+
+	// curImg_:				Complete image at current depth (inside tiffStack)
+	// cameraViewFromWhole: Part of curImg_, the camera is strifing over using the stage control -> maxRange cameraWidth*cameraHeight, at borders its smaller (only the part of curImg_ that is inside the range counts)
+	// imageView:			The final image the user can see -> cameraViewFromWhole, but with noise/border at the border of the actual tiffImage (curImg_)
+	// posX & posY:			current stage position
+	// posXLeft & Up:		is the camera position to the left and/or up relative to curImg_ (for negative coordiantes) -> flag is used to properly fill the camView into imageView at the correct offset
+
 	//should create an zero initialized image of size camera
 	cv::Mat imageView = cv::Mat::zeros(cameraHeight_, cameraWidth_, type_);
+
+	cv::randu(imageView, noiseMin_, noiseMax_);
 
 	double posX, posY;
 	GetCoreCallback()->GetXYPosition(posX, posY);
 	double posXLeft = posX < 0.0 ? 1.0 : 0.0;
 	double posYUp = posY < 0.0 ? 1.0 : 0.0;
 
-	double viewFromWholeWidth = std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1) - std::max(0.0, std::min(posX, (double)img.cols - 1)));
-	double viewFromWholeHeight = std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1) - std::max(0.0, std::min(posY, (double)img.rows - 1)));
+	cv::Mat cameraViewFromWhole = img
+	(
+		cv::Range(std::max(0.0, std::min(posY, (double)img.rows)), std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows))),
+		cv::Range(std::max(0.0, std::min(posX, (double)img.cols)), std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols)))
+	);
 
-	cv::Mat cameraViewFromWhole = curImg_(cv::Range(std::max(0.0, std::min(posY, (double)img.rows - 1)), std::max(0.0, std::min(posY + cameraHeight_, (double)img.rows - 1)))
-										, cv::Range(std::max(0.0, std::min(posX, (double)img.cols - 1)), std::max(0.0, std::min(posX + cameraWidth_, (double)img.cols - 1))) );
-
-	if (cameraViewFromWhole.size().width > 0.0 && cameraViewFromWhole.size().height > 0.0)
+	if (cameraViewFromWhole.cols > 0 && cameraViewFromWhole.rows > 0)
 	{
-		cv::Rect copyDest(cv::Point( (int)(cameraWidth_ - (posXLeft * (viewFromWholeWidth))) % (cameraWidth_), (int)(cameraHeight_ - (posYUp * (viewFromWholeHeight))) % (cameraHeight_) ), cameraViewFromWhole.size());
+		int xOffset = (int)(cameraWidth_ - (posXLeft * (cameraViewFromWhole.cols))) % (cameraWidth_);
+		int yOffset = (int)(cameraHeight_ - (posYUp * (cameraViewFromWhole.rows))) % (cameraHeight_);
+
+		cv::Rect copyDest(cv::Point(xOffset, yOffset), cameraViewFromWhole.size());
+
 		cameraViewFromWhole.copyTo(imageView(copyDest));
 	}
 
 	roi_ = imageView;
+	roiX_ = std::max(0.0, std::min(posX + (img.cols / 2), (double)img.cols) - cameraWidth_);
+	roiY_ = std::max(0.0, std::min(posY + (img.rows / 2), (double)img.rows) - cameraHeight_);
+
+
+	roiHeight_ = std::max(1, std::min(cameraHeight_, img.rows));
+	roiWidth_ = std::max(1, std::min(cameraWidth_, img.cols));
 	updateROI();
 }
 
