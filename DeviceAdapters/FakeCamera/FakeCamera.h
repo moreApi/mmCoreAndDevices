@@ -87,6 +87,8 @@ public:
 	int OnUpdateRateMil(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnUpdateCamWidth(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnUpdateCamHeight(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnUpdateNoiseMin(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnUpdateNoiseMax(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 	std::string parseUntil(const char*& it, const char delim) const throw (parse_error);
 	std::string parsePlaceholder(const char*& it) const;
@@ -110,6 +112,8 @@ private:
 
 	int cameraWidth_;
 	int cameraHeight_;
+	int noiseMin_;
+	int noiseMax_;
 	int posX_;
 	int posY_;
 
